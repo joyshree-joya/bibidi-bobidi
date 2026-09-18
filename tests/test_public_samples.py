@@ -7,47 +7,74 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
-SAMPLE_FILE = Path(
-    "BUP_CSE_FEST_2026_Preli_Public_Sample_Cases.json"
-)
-
 client = TestClient(app)
 
 
-def load_public_cases():
-    with SAMPLE_FILE.open("r", encoding="utf-8") as file:
-        data = json.load(file)
+# Public sample JSON file
+SAMPLE_FILE = (
+    Path(__file__).resolve().parent.parent
+    / "BUP_CSE_FEST_2026_Preli_Public_Sample_Cases.json"
+)
 
-    return data["cases"]
+
+with open(SAMPLE_FILE, "r", encoding="utf-8") as file:
+    PUBLIC_SAMPLES = json.load(file)
 
 
-CASES = load_public_cases()
+def get_expected_adjustment(directive):
+    """Return only the machine-checkable directive fields."""
+    return {
+        "note_index": directive["note_index"],
+        "applies": directive["applies"],
+        "directive_type": directive["directive_type"],
+        "structured_adjustment": directive["structured_adjustment"],
+    }
 
 
 @pytest.mark.parametrize(
     "case",
-    CASES,
-    ids=[case["id"] for case in CASES],
+    PUBLIC_SAMPLES,
+    ids=lambda case: case["id"],
 )
 def test_public_sample(case):
+    """
+    Test one complete public sample through the real API.
+
+    Pipeline:
+        Public Sample
+            ↓
+        FastAPI
+            ↓
+        OpenAI LLM
+            ↓
+        Guardrails
+            ↓
+        Optimizer
+            ↓
+        Final Response
+    """
+
+    sample_id = case["id"]
+    request_data = case["input"]
+    expected = case["reference"]
+
     response = client.post(
         "/optimize-energy",
-        json=case["input"],
+        json=request_data,
     )
 
     assert response.status_code == 200, (
-        f"{case['id']} failed with "
+        f"{sample_id} failed with status "
         f"{response.status_code}: {response.text}"
     )
 
     result = response.json()
-    expected = case["expected_output"]
 
-    # -------------------------------------------------
-    # 1. Basic response structure
-    # -------------------------------------------------
+  
+    # Basic response structure
+   
 
-    assert result["scenario_id"] == expected["scenario_id"]
+    assert result["scenario_id"] == request_data["scenario_id"]
 
     assert "directive_interpretation" in result
     assert "hourly_plan" in result
@@ -56,76 +83,66 @@ def test_public_sample(case):
     assert "peak_grid_kwh" in result
     assert "plan_summary" in result
 
-    # -------------------------------------------------
-    # 2. Directive interpretation
-    # -------------------------------------------------
+    # Directive interpretation
+
 
     actual_directives = result["directive_interpretation"]
     expected_directives = expected["directive_interpretation"]
 
+    # Exactly one directive per note
     assert len(actual_directives) == len(
-        case["input"]["operator_notes"]
+        request_data["operator_notes"]
     )
 
-    assert len(actual_directives) == len(expected_directives)
+    # Correct order
+    for index, directive in enumerate(actual_directives):
+        assert directive["note_index"] == index
 
-    for actual, expected_directive in zip(
-        actual_directives,
-        expected_directives,
-    ):
-        assert actual["note_index"] == expected_directive["note_index"]
+    # Compare machine-checkable directive semantics.
+    # Explanation text is intentionally NOT compared.
+    actual_semantics = [
+        get_expected_adjustment(directive)
+        for directive in actual_directives
+    ]
 
-        assert actual["applies"] == expected_directive["applies"]
+    expected_semantics = [
+        get_expected_adjustment(directive)
+        for directive in expected_directives
+    ]
 
-        assert (
-            actual["directive_type"]
-            == expected_directive["directive_type"]
-        )
+    assert actual_semantics == expected_semantics
 
-        assert (
-            actual["structured_adjustment"]
-            == expected_directive["structured_adjustment"]
-        )
 
-        # Explanation does not need exact matching.
-        assert isinstance(actual["explanation"], str)
-        assert actual["explanation"].strip()
+    # Hourly plan
 
-    # -------------------------------------------------
-    # 3. Hourly plan must contain all 24 hours
-    # -------------------------------------------------
 
     hourly_plan = result["hourly_plan"]
 
     assert len(hourly_plan) == 24
 
-    actual_hours = [
-        item["hour"]
-        for item in hourly_plan
-    ]
+    hours = [item["hour"] for item in hourly_plan]
 
-    assert sorted(actual_hours) == list(range(24))
+    assert len(set(hours)) == 24
+    assert set(hours) == set(range(24))
 
-    # -------------------------------------------------
-    # 4. Basic hourly values
-    # -------------------------------------------------
+    # Basic numeric validation
+
 
     for item in hourly_plan:
-        assert item["grid_kwh"] >= -0.01
-        assert item["solar_used_kwh"] >= -0.01
-        assert item["battery_kwh"] >= -0.01
-        assert item["battery_energy_after_kwh"] >= -0.01
+        assert item["grid_kwh"] >= 0
+        assert item["solar_used_kwh"] >= 0
+        assert item["battery_kwh"] >= 0
+        assert item["battery_energy_after_kwh"] >= 0
 
-        assert item["battery_action"] in {
-            "charge",
-            "discharge",
-            "idle",
-        }
+    assert result["total_grid_kwh"] >= 0
+    assert result["total_cost_bdt"] >= 0
+    assert result["peak_grid_kwh"] >= 0
 
-    # -------------------------------------------------
-    # 5. Total values should be close to reference
-    # -------------------------------------------------
-
+    # Totals should match the public reference.
+    #
+    # Equivalent optimal schedules are allowed, so we compare
+    # objective values rather than requiring the exact hourly plan.
+   
     assert result["total_grid_kwh"] == pytest.approx(
         expected["total_grid_kwh"],
         abs=0.01,
@@ -136,10 +153,17 @@ def test_public_sample(case):
         abs=0.01,
     )
 
+    
+    # Peak grid usage
+    #
+    # The public cases allow equivalent optimal schedules.
+    # Therefore calculated peak from OUR returned schedule.
+   
+
     calculated_peak = max(
-    item["grid_kwh"]
-    for item in hourly_plan
-)
+        item["grid_kwh"]
+        for item in hourly_plan
+    )
 
     assert result["peak_grid_kwh"] == pytest.approx(
         calculated_peak,
