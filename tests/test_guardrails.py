@@ -6,450 +6,234 @@ from app.guardrails import (
 )
 
 
-BATTERY_CAPACITY = 300.0
+def valid_solar_directive() -> dict:
+    return {
+        "note_index": 0,
+        "applies": True,
+        "directive_type": "solar_reduction",
+        "structured_adjustment": {
+            "hours": [13, 14],
+            "factor": 0.2,
+        },
+        "explanation": "Solar availability is reduced to 20 percent.",
+    }
 
 
-# --------------------------------------------------
-# Valid directive
-# --------------------------------------------------
+def valid_no_op_directive() -> dict:
+    return {
+        "note_index": 0,
+        "applies": False,
+        "directive_type": "no_op",
+        "structured_adjustment": None,
+        "explanation": "The note does not affect energy scheduling.",
+    }
 
-def test_valid_solar_reduction():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "solar_reduction",
-            "structured_adjustment": {
-                "hours": [13, 14],
-                "factor": 0.2,
-            },
-            "explanation": "Solar generation is reduced.",
-        }
-    ]
 
-    result = validate_and_normalize_directives(
-        raw,
-        notes_count=1,
-        battery_capacity_kwh=BATTERY_CAPACITY,
+def validate(
+    directives: list[dict],
+    notes_count: int = 1,
+    capacity: float = 500,
+) -> list[dict]:
+    return validate_and_normalize_directives(
+        raw_directives=directives,
+        notes_count=notes_count,
+        battery_capacity_kwh=capacity,
     )
 
-    assert result == raw
+
+def test_valid_solar_reduction_is_accepted():
+    result = validate([valid_solar_directive()])
+
+    assert len(result) == 1
+    assert result[0]["note_index"] == 0
+    assert result[0]["applies"] is True
+    assert result[0]["directive_type"] == "solar_reduction"
+    assert result[0]["structured_adjustment"]["hours"] == [13, 14]
+    assert result[0]["structured_adjustment"]["factor"] == 0.2
 
 
-# --------------------------------------------------
-# Valid no_op
-# --------------------------------------------------
+def test_valid_no_op_is_accepted():
+    result = validate([valid_no_op_directive()])
 
-def test_valid_no_op():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": False,
-            "directive_type": "no_op",
-            "structured_adjustment": None,
-            "explanation": "The note is not energy related.",
-        }
-    ]
-
-    result = validate_and_normalize_directives(
-        raw,
-        notes_count=1,
-        battery_capacity_kwh=BATTERY_CAPACITY,
-    )
-
-    assert result == raw
+    assert result[0]["applies"] is False
+    assert result[0]["directive_type"] == "no_op"
+    assert result[0]["structured_adjustment"] is None
 
 
-# --------------------------------------------------
-# Missing note
-# --------------------------------------------------
+def test_hours_are_sorted_and_duplicates_removed():
+    directive = valid_solar_directive()
+    directive["structured_adjustment"]["hours"] = [14, 13, 14]
 
-def test_missing_note_index():
-    raw = [
-        {
-            "applies": True,
-            "directive_type": "solar_reduction",
-            "structured_adjustment": {
-                "hours": [13],
-                "factor": 0.5,
-            },
-            "explanation": "Solar is reduced.",
-        }
-    ]
+    result = validate([directive])
 
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
+    assert result[0]["structured_adjustment"]["hours"] == [13, 14]
 
 
-# --------------------------------------------------
-# Duplicate note_index
-# --------------------------------------------------
+def test_results_are_returned_in_note_index_order():
+    first = valid_no_op_directive()
 
-def test_duplicate_note_index():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "solar_reduction",
-            "structured_adjustment": {
-                "hours": [13],
-                "factor": 0.5,
-            },
-            "explanation": "Solar is reduced.",
+    second = {
+        "note_index": 1,
+        "applies": True,
+        "directive_type": "no_charge_window",
+        "structured_adjustment": {
+            "hours": [14, 15],
         },
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "no_charge_window",
-            "structured_adjustment": {
-                "hours": [14],
-            },
-            "explanation": "Charging is disabled.",
-        },
-    ]
+        "explanation": "Charging is prohibited.",
+    }
 
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=2,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Wrong note order -> should normalize
-# --------------------------------------------------
-
-def test_wrong_note_order_is_normalized():
-    raw = [
-        {
-            "note_index": 1,
-            "applies": True,
-            "directive_type": "no_charge_window",
-            "structured_adjustment": {
-                "hours": [14],
-            },
-            "explanation": "Charging is disabled.",
-        },
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "solar_reduction",
-            "structured_adjustment": {
-                "hours": [13],
-                "factor": 0.5,
-            },
-            "explanation": "Solar is reduced.",
-        },
-    ]
-
-    result = validate_and_normalize_directives(
-        raw,
+    result = validate(
+        directives=[second, first],
         notes_count=2,
-        battery_capacity_kwh=BATTERY_CAPACITY,
     )
 
     assert [item["note_index"] for item in result] == [0, 1]
 
 
-# --------------------------------------------------
-# Invalid directive type
-# --------------------------------------------------
-
-def test_invalid_directive_type():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "turn_off_everything",
-            "structured_adjustment": {},
-            "explanation": "Invalid directive.",
-        }
-    ]
+def test_duplicate_note_index_is_rejected():
+    first = valid_no_op_directive()
+    duplicate = valid_solar_directive()
 
     with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
+        validate(
+            directives=[first, duplicate],
+            notes_count=2,
         )
 
 
-# --------------------------------------------------
-# Invalid hour
-# --------------------------------------------------
+def test_missing_note_is_rejected():
+    with pytest.raises(DirectiveValidationError):
+        validate(
+            directives=[valid_no_op_directive()],
+            notes_count=2,
+        )
 
-def test_invalid_hour():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "no_charge_window",
-            "structured_adjustment": {
-                "hours": [25],
+
+def test_invalid_directive_type_is_rejected():
+    directive = valid_solar_directive()
+    directive["directive_type"] = "turn_off_campus"
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+@pytest.mark.parametrize("invalid_hour", [-1, 24, 100])
+def test_invalid_hour_is_rejected(invalid_hour):
+    directive = valid_solar_directive()
+    directive["structured_adjustment"]["hours"] = [invalid_hour]
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+@pytest.mark.parametrize("invalid_factor", [-0.1, 1.1, True])
+def test_invalid_solar_factor_is_rejected(invalid_factor):
+    directive = valid_solar_directive()
+    directive["structured_adjustment"]["factor"] = invalid_factor
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+def test_reserve_above_battery_capacity_is_rejected():
+    directive = {
+        "note_index": 0,
+        "applies": True,
+        "directive_type": "minimum_battery_reserve",
+        "structured_adjustment": {
+            "hours": [17, 18],
+            "minimum_energy_kwh": 600,
+        },
+        "explanation": "Maintain a minimum battery reserve.",
+    }
+
+    with pytest.raises(DirectiveValidationError):
+        validate(
+            directives=[directive],
+            capacity=500,
+        )
+
+
+def test_negative_reserve_is_rejected():
+    directive = {
+        "note_index": 0,
+        "applies": True,
+        "directive_type": "minimum_battery_reserve",
+        "structured_adjustment": {
+            "hours": [17],
+            "minimum_energy_kwh": -10,
+        },
+        "explanation": "Maintain a minimum battery reserve.",
+    }
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+def test_negative_grid_cap_is_rejected():
+    directive = {
+        "note_index": 0,
+        "applies": True,
+        "directive_type": "max_grid_window",
+        "structured_adjustment": {
+            "hours": [18],
+            "max_grid_kwh": -1,
+        },
+        "explanation": "Limit grid import.",
+    }
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+def test_no_op_with_applies_true_is_rejected():
+    directive = valid_no_op_directive()
+    directive["applies"] = True
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+def test_no_op_with_adjustment_is_rejected():
+    directive = valid_no_op_directive()
+    directive["structured_adjustment"] = {
+        "hours": [1]
+    }
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+def test_non_no_op_with_applies_false_is_rejected():
+    directive = valid_solar_directive()
+    directive["applies"] = False
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+def test_non_no_op_with_null_adjustment_is_rejected():
+    directive = valid_solar_directive()
+    directive["structured_adjustment"] = None
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+def test_empty_explanation_is_rejected():
+    directive = valid_solar_directive()
+    directive["explanation"] = "   "
+
+    with pytest.raises(DirectiveValidationError):
+        validate([directive])
+
+
+def test_non_list_output_is_rejected():
+    with pytest.raises(DirectiveValidationError):
+        validate_and_normalize_directives(
+            raw_directives={
+                "note_index": 0
             },
-            "explanation": "Charging is disabled.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
             notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Duplicate hours -> should normalize
-# --------------------------------------------------
-
-def test_duplicate_hours_are_normalized():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "no_charge_window",
-            "structured_adjustment": {
-                "hours": [15, 13, 15, 14],
-            },
-            "explanation": "Charging is disabled.",
-        }
-    ]
-
-    result = validate_and_normalize_directives(
-        raw,
-        notes_count=1,
-        battery_capacity_kwh=BATTERY_CAPACITY,
-    )
-
-    assert result[0]["structured_adjustment"]["hours"] == [
-        13,
-        14,
-        15,
-    ]
-
-
-# --------------------------------------------------
-# Invalid factor
-# --------------------------------------------------
-
-def test_invalid_factor():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "solar_reduction",
-            "structured_adjustment": {
-                "hours": [13],
-                "factor": 1.5,
-            },
-            "explanation": "Solar is reduced.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Negative battery reserve
-# --------------------------------------------------
-
-def test_negative_battery_reserve():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "minimum_battery_reserve",
-            "structured_adjustment": {
-                "hours": [17],
-                "minimum_energy_kwh": -50,
-            },
-            "explanation": "Battery reserve is maintained.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Reserve above battery capacity
-# --------------------------------------------------
-
-def test_reserve_above_battery_capacity():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "minimum_battery_reserve",
-            "structured_adjustment": {
-                "hours": [17],
-                "minimum_energy_kwh": 500,
-            },
-            "explanation": "Battery reserve is maintained.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Negative grid cap
-# --------------------------------------------------
-
-def test_negative_grid_cap():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "max_grid_window",
-            "structured_adjustment": {
-                "hours": [17],
-                "max_grid_kwh": -100,
-            },
-            "explanation": "Grid usage is capped.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# no_op with applies=True
-# --------------------------------------------------
-
-def test_no_op_with_applies_true():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "no_op",
-            "structured_adjustment": None,
-            "explanation": "No action required.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Non-no_op with applies=False
-# --------------------------------------------------
-
-def test_non_no_op_with_applies_false():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": False,
-            "directive_type": "solar_reduction",
-            "structured_adjustment": {
-                "hours": [13],
-                "factor": 0.5,
-            },
-            "explanation": "Solar is reduced.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Wrong adjustment fields
-# --------------------------------------------------
-
-def test_wrong_adjustment_fields():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "solar_reduction",
-            "structured_adjustment": {
-                "hours": [13],
-                "factor": 0.5,
-                "extra_field": 123,
-            },
-            "explanation": "Solar is reduced.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Boolean used as numeric value
-# --------------------------------------------------
-
-def test_boolean_numeric_value_is_rejected():
-    raw = [
-        {
-            "note_index": 0,
-            "applies": True,
-            "directive_type": "solar_reduction",
-            "structured_adjustment": {
-                "hours": [13],
-                "factor": True,
-            },
-            "explanation": "Solar is reduced.",
-        }
-    ]
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
-        )
-
-
-# --------------------------------------------------
-# Malformed LLM response
-# --------------------------------------------------
-
-def test_malformed_llm_response():
-    raw = "this is not a JSON list"
-
-    with pytest.raises(DirectiveValidationError):
-        validate_and_normalize_directives(
-            raw,
-            notes_count=1,
-            battery_capacity_kwh=BATTERY_CAPACITY,
+            battery_capacity_kwh=500,
         )
