@@ -59,3 +59,73 @@ Structured Directives
        │
        ▼
 24-Hour Energy Plan
+
+
+
+🚀 Getting Started
+1. Clone the repository
+git clone https://github.com/joyshree-joya/bibidi-bobidi.git
+cd bibidi-bobidi
+2. Create a virtual environment
+Windows
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+Linux / macOS
+python3 -m venv .venv
+source .venv/bin/activate
+3. Install dependencies
+pip install -r requirements.txt
+4. Configure environment variables
+
+Create a .env file in the project root:
+
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-5.6-luna
+
+⚠️ Never commit .env to GitHub.
+
+5. Run the API
+python -m uvicorn app.main:app --reload
+
+The API will be available at:
+
+http://127.0.0.1:8000
+📚 API Documentation
+
+Once the server is running, open:
+
+Swagger UI
+http://127.0.0.1:8000/docs
+
+You can test the API directly from your browser.
+
+Health Check
+GET /health
+
+Response:
+
+{
+  "status": "ok"
+}
+
+🧪 Testing
+
+Run deterministic guardrail tests:
+
+pytest tests/test_guardrails.py -v
+
+Run the public integration tests:
+
+pytest tests/test_public_samples.py -v
+
+⚠️ test_public_samples.py uses the real OpenAI API and consumes API requests. Avoid running it unnecessarily.
+
+🛠️ Tech Stack
+Technology	Purpose
+Python	Core application
+FastAPI	REST API
+OpenAI API	LLM interpretation
+Pydantic	Data validation
+PuLP	Optimization
+CBC	Solver
+Pytest	Testing
