@@ -89,13 +89,13 @@ python -m uvicorn app.main:app --reload
 
 The API will be available at:
 
-http://127.0.0.1:8000
+<a href ="https://bibidi-bobidi.onrender.com"> click here </a>
 📚 API Documentation
 
 Once the server is running, open:
 
 Swagger UI
-http://127.0.0.1:8000/docs
+<a href ="https://bibidi-bobidi.onrender.com/docs"> click here </a>
 
 You can test the API directly from your browser.
 
