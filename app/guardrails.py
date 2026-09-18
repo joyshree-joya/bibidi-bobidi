@@ -60,3 +60,10 @@ def validate_and_normalize_directives(
                 raise DirectiveValidationError(
                 "Missing note_index"
                 )
+
+            directive_type = directive.get("directive_type")
+
+            if directive_type not in ALLOWED_DIRECTIVE_TYPES:
+                raise DirectiveValidationError(
+                    "Invalid directive_type"
+                )
