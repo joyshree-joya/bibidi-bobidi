@@ -1,59 +1,61 @@
-⚡ GridWise LLM
+# ⚡ GridWise LLM
 
-LLM-powered Smart Campus Energy Optimization API
+<p align="center">
+  <strong>LLM-Powered Smart Campus Energy Optimization API</strong>
+</p>
 
-GridWise converts natural-language energy instructions into structured directives, validates them using deterministic guardrails, and generates a minimum-cost 24-hour energy schedule.
+<p align="center">
+  Convert natural-language energy instructions into safe, structured directives and generate a minimum-cost 24-hour energy schedule.
+</p>
 
-✨ Features
-🤖 LLM-powered operator note interpretation
-🧩 Structured JSON directives
-🛡️ Deterministic validation & normalization
-☀️ Solar reduction
-🔋 Battery reserve management
-🚫 No-charge / no-discharge windows
-⚡ Maximum grid-import limits
-💰 Minimum-cost energy optimization
-🚀 FastAPI REST API
-🧪 Automated unit & integration testing
-🔄 How It Works
-Natural-Language Notes
-        ↓
-      OpenAI LLM
-        ↓
+<p align="center">
+
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![OpenAI](https://img.shields.io/badge/OpenAI-412991?style=flat-square&logo=openai&logoColor=white)
+![Pytest](https://img.shields.io/badge/Pytest-0A9EDC?style=flat-square&logo=pytest&logoColor=white)
+
+</p>
+
+---
+
+## 🌟 Overview
+
+**GridWise LLM** is a smart-campus energy optimization API that allows operators to control energy policies using natural language.
+
+For example:
+
+> "Reduce solar generation from 1 PM to 3 PM by 80%."
+
+The system uses an LLM to understand the instruction, converts it into structured JSON, validates it using deterministic guardrails, and generates an optimized 24-hour energy schedule.
+
+---
+
+## 🔄 How It Works
+
+```text
+Natural Language
+      │
+      ▼
+┌──────────────┐
+│   OpenAI LLM │
+└──────┬───────┘
+       │
+       ▼
 Structured Directives
-        ↓
-Deterministic Guardrails
-        ↓
-Energy Optimizer
-        ↓
-24-Hour Optimized Schedule
-🛠️ Tech Stack
-
-Python · FastAPI · OpenAI API · Pydantic · PuLP · CBC · pytest
-
-🚀 Run Locally
-pip install -r requirements.txt
-
-Create .env:
-
-OPENAI_API_KEY=your_api_key
-OPENAI_MODEL=gpt-5.6-luna
-
-Run:
-
-python -m uvicorn app.main:app --reload
-
-API documentation:
-
-http://127.0.0.1:8000/docs
-🧪 Testing
-
-Run guardrail tests:
-
-pytest tests/test_guardrails.py -v
-
-Run public integration cases:
-
-pytest tests/test_public_samples.py -v
-
-The public integration tests use real LLM API requests.
+       │
+       ▼
+┌──────────────┐
+│  Guardrails  │
+│ Validate +   │
+│  Normalize   │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐
+│   Optimizer  │
+│ Minimum Cost │
+└──────┬───────┘
+       │
+       ▼
+24-Hour Energy Plan
